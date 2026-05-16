@@ -74,18 +74,22 @@ export default function App() {
     setLoading(true); setResults(null); setError(null);
     const toneName = TONES.find(t => t.id === tone)?.label || tone;
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          system: SYSTEM,
-          messages: [{ role: "user", content: `Source:\n\n${content}\n\nTone: ${toneName}\nPlatforms: ${selected.join(", ")}\n\nReturn only JSON.` }],
-        }),
-      });
+      const GEMINI_KEY = import.meta.env.VITE_GEMINI_KEY;
+      const prompt = `${SYSTEM}\n\nSource:\n\n${content}\n\nTone: ${toneName}\nPlatforms: ${selected.join(", ")}\n\nReturn only JSON.`;
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.8, maxOutputTokens: 2048 }
+          })
+        }
+      );
       const data = await res.json();
-      const raw = data.content?.map(b => b.text || "").join("").trim();
+      if (data.error) throw new Error(data.error.message);
+      const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
       const parsed = JSON.parse(raw.replace(/```json|```/gi, "").trim());
       setResults(parsed);
       setActiveTab(selected[0]);
