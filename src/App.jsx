@@ -94,8 +94,8 @@ export default function App() {
       setResults(parsed);
       setActiveTab(selected[0]);
       setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 200);
-    } catch {
-      setError("Something went wrong. Please try again.");
+    } catch (e) {
+      setError("Error: " + (e.message || "Something went wrong. Please try again."));
     } finally {
       setLoading(false);
     }
