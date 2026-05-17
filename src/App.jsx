@@ -77,7 +77,7 @@ export default function App() {
       const GEMINI_KEY = import.meta.env.VITE_GEMINI_KEY;
       const prompt = `${SYSTEM}\n\nSource:\n\n${content}\n\nTone: ${toneName}\nPlatforms: ${selected.join(", ")}\n\nReturn only JSON.`;
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash-preview-05-20:generateContent?key=${GEMINI_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-04-17:generateContent?key=${GEMINI_KEY}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
