@@ -71,31 +71,55 @@ export default function App() {
 
   const generate = async () => {
     if (!content.trim() || !selected.length) return;
+    if (useCount >= FREE_LIMIT) { setShowPaywall(true); return; }
+    const newCount = useCount + 1;
+    setUseCount(newCount);
+    localStorage.setItem('refract_uses', newCount);
     setLoading(true); setResults(null); setError(null);
     const toneName = TONES.find(t => t.id === tone)?.label || tone;
     try {
       const GEMINI_KEY = import.meta.env.VITE_GEMINI_KEY;
       const prompt = `${SYSTEM}\n\nSource:\n\n${content}\n\nTone: ${toneName}\nPlatforms: ${selected.join(", ")}\n\nReturn only JSON.`;
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.8, maxOutputTokens: 8192 }
-          })
+      
+      const models = [
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
+      ];
+      
+      let data = null;
+      let lastError = null;
+      
+      for (const model of models) {
+        try {
+          const res = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: { temperature: 0.8, maxOutputTokens: 8192 }
+              })
+            }
+          );
+          data = await res.json();
+          if (!data.error) break;
+          lastError = data.error.message;
+        } catch (e) {
+          lastError = e.message;
         }
-      );
-      const data = await res.json();
-      if (data.error) throw new Error(data.error.message);
+      }
+      
+      if (!data || data.error) throw new Error(lastError || "All models failed. Please try again in a moment.");
+
       const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
       const parsed = JSON.parse(raw.replace(/```json|```/gi, "").trim());
       setResults(parsed);
       setActiveTab(selected[0]);
       setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 200);
     } catch (e) {
-      setError("Error: " + (e.message || "Something went wrong. Please try again."));
+      setError("AI is busy right now — please try again in 30 seconds. This is temporary.");
     } finally {
       setLoading(false);
     }
@@ -152,7 +176,33 @@ export default function App() {
         .result-text{white-space:pre-wrap;font-size:14px;line-height:1.85;color:#c8c4bc;font-weight:300}
         .char-bar{height:2px;background:#e8b84b;border-radius:1px;transition:width .3s}
         .noise{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;opacity:.025;z-index:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")}
+        .paywall-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:#0c0c0bcc;backdrop-filter:blur(8px);z-index:1000;display:flex;align-items:center;justify-content:center}
+        .paywall-box{background:#141412;border:1px solid #e8b84b55;border-radius:8px;padding:40px;max-width:440px;width:90%;text-align:center}
       `}</style>
+
+      {/* PAYWALL MODAL */}
+      {showPaywall && (
+        <div className="paywall-overlay" onClick={() => setShowPaywall(false)}>
+          <div className="paywall-box" onClick={e => e.stopPropagation()}>
+            <div style={{fontFamily:"'Instrument Serif',serif",fontSize:28,marginBottom:12,letterSpacing:"-0.5px"}}>
+              You've used your 3 free generations ✦
+            </div>
+            <p style={{fontSize:14,color:"#666",lineHeight:1.7,marginBottom:24}}>
+              Upgrade to Refract Pro for unlimited content repurposing across all 5 platforms.
+            </p>
+            <div style={{background:"#0c0c0b",border:"1px solid #252523",borderRadius:6,padding:"20px",marginBottom:24}}>
+              <div style={{fontFamily:"'Instrument Serif',serif",fontSize:36,color:"#e8b84b",fontStyle:"italic"}}>$29<span style={{fontSize:14,color:"#555",fontStyle:"normal"}}>/month</span></div>
+              <div style={{fontSize:13,color:"#555",marginTop:8}}>Unlimited generations · All 5 platforms · All tones</div>
+            </div>
+            <button onClick={() => window.open(GUMROAD_LINK, '_blank')} style={{width:"100%",padding:"14px",background:"#e8b84b",color:"#0c0c0b",border:"none",borderRadius:4,fontSize:14,fontWeight:700,cursor:"pointer",letterSpacing:".3px",textTransform:"uppercase",marginBottom:12}}>
+              Upgrade Now → $29/month
+            </button>
+            <button onClick={() => setShowPaywall(false)} style={{background:"transparent",border:"none",color:"#555",fontSize:13,cursor:"pointer"}}>
+              Maybe later
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="noise" />
 
@@ -260,8 +310,10 @@ export default function App() {
                   </svg>
                   <span style={{ fontFamily: "'DM Sans',sans-serif", fontWeight: 600, fontSize: 13 }}>{LOAD_MSGS[loadMsg]}</span>
                 </>
+              ) : useCount >= FREE_LIMIT ? (
+                <>Upgrade to continue →</>
               ) : (
-                <>Refract Now <span style={{ opacity: .7 }}>→</span></>
+                <>{`Refract Now (${FREE_LIMIT - useCount} free left)`} <span style={{ opacity: .7 }}>→</span></>
               )}
             </button>
           </div>
