@@ -92,29 +92,58 @@ export default function App() {
     setLoading(true); setResults(null); setError(null);
     const toneName = TONES.find(t => t.id === tone)?.label || tone;
     const prompt = `${SYSTEM}\n\nSource:\n\n${content}\n\nTone: ${toneName}\nPlatforms: ${selected.join(", ")}\n\nReturn only JSON.`;
+    const OPENROUTER_KEY = import.meta.env.VITE_OPENROUTER_KEY;
     const GEMINI_KEY = import.meta.env.VITE_GEMINI_KEY;
-    const models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
     let parsed = null;
     let lastError = null;
-    for (const model of models) {
+
+    // Try OpenRouter first (free $5 credit, very reliable)
+    if (OPENROUTER_KEY) {
       try {
-        const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: prompt }] }],
-              generationConfig: { temperature: 0.8, maxOutputTokens: 8192 }
-            })
-          }
-        );
+        const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${OPENROUTER_KEY}`,
+            "HTTP-Referer": "https://refract-azure.vercel.app",
+          },
+          body: JSON.stringify({
+            model: "meta-llama/llama-3.1-8b-instruct:free",
+            messages: [{ role: "user", content: prompt }],
+            max_tokens: 4000,
+          })
+        });
         const data = await res.json();
-        if (data.error) { lastError = data.error.message; continue; }
-        const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-        parsed = JSON.parse(raw.replace(/```json|```/gi, "").trim());
-        break;
+        if (!data.error) {
+          const raw = data.choices?.[0]?.message?.content || "";
+          parsed = JSON.parse(raw.replace(/```json|```/gi, "").trim());
+        } else { lastError = data.error.message; }
       } catch (e) { lastError = e.message; }
+    }
+
+    // Fallback to Gemini if OpenRouter fails
+    if (!parsed && GEMINI_KEY) {
+      const models = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.5-flash"];
+      for (const model of models) {
+        try {
+          const res = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: { temperature: 0.8, maxOutputTokens: 8192 }
+              })
+            }
+          );
+          const data = await res.json();
+          if (data.error) { lastError = data.error.message; continue; }
+          const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+          parsed = JSON.parse(raw.replace(/```json|```/gi, "").trim());
+          break;
+        } catch (e) { lastError = e.message; }
+      }
     }
     setLoading(false);
     if (!parsed) { setError("AI is busy right now — please try again in 30 seconds."); return; }
@@ -221,18 +250,18 @@ export default function App() {
       {/* HERO */}
       <div style={{maxWidth:860,margin:"0 auto",padding:"72px 40px 52px",position:"relative",zIndex:1}}>
         <div style={{display:"inline-flex",alignItems:"center",gap:8,border:"1px solid #252523",borderRadius:3,padding:"5px 14px",marginBottom:28}}>
-          <span style={{fontSize:11,color:"#e8b84b",letterSpacing:".6px",textTransform:"uppercase",fontWeight:600}}>✦ Write once. Publish everywhere.</span>
+          <span style={{fontSize:11,color:"#e8b84b",letterSpacing:".6px",textTransform:"uppercase",fontWeight:600}}>✦ Write once. Save 15 hours a week.</span>
         </div>
         <h1 style={{fontFamily:"'Instrument Serif',serif",fontSize:"clamp(44px,6vw,72px)",lineHeight:1.05,letterSpacing:"-2.5px",marginBottom:22,maxWidth:700}}>
-          One idea.<br/>
-          <span style={{color:"#e8b84b",fontStyle:"italic"}}>Five platforms.</span><br/>
-          Thirty seconds.
+          Stop rewriting<br/>
+          the same content<br/>
+          <span style={{color:"#e8b84b",fontStyle:"italic"}}>5 times.</span>
         </h1>
         <p style={{fontSize:16,color:"#666",lineHeight:1.75,maxWidth:500,fontWeight:300}}>
-          Paste anything — a blog post, a shower thought, a transcript. Refract writes your Twitter thread, LinkedIn post, Instagram caption, TikTok script, and newsletter. Powered by AI.
+          Paste anything once. Get your Twitter thread, LinkedIn post, Instagram caption, TikTok script, and newsletter — all in 30 seconds. Save 15+ hours every week.
         </p>
         <div style={{display:"flex",gap:40,marginTop:40,paddingTop:32,borderTop:"1px solid #181816",flexWrap:"wrap"}}>
-          {[["1,200+","creators using Refract"],["5 platforms","in one click"],["15 hrs","saved weekly"]].map(([n,l])=>(
+          {[["15 hrs","saved every week"],["5 platforms","from one paste"],["30 sec","per repurpose"]].map(([n,l])=>(
             <div key={n}>
               <div style={{fontFamily:"'Instrument Serif',serif",fontSize:30,fontStyle:"italic",color:"#e8b84b",lineHeight:1}}>{n}</div>
               <div style={{fontSize:12,color:"#3a3a38",marginTop:5}}>{l}</div>
